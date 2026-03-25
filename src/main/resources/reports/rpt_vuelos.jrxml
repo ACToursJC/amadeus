@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Formato compatible con JasperReports 6.x - Columnas Ajustadas -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="rpt_vuelos" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20">
+    <property name="net.sf.jasperreports.export.xls.remove.empty.space.between.rows" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.detect.cell.type" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.white.page.background" value="false"/>
+    <property name="com.jaspersoft.studio.unit." value="pixel"/>
+
+    <field name="ciudad" class="java.lang.String"/>
+    <field name="vuelo" class="java.lang.String"/>
+    <field name="clase" class="java.lang.String"/>
+    <field name="fecha" class="java.lang.String"/>
+    <field name="estado" class="java.lang.String"/>
+    <field name="llegada" class="java.lang.String"/>
+    <field name="co2" class="java.lang.Number"/>
+
+    <title>
+        <band height="40">
+            <staticText>
+                <reportElement x="0" y="0" width="802" height="30" uuid="09d18e87-6e47-4933-9036-647970d4f291"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font size="16" isBold="true"/>
+                </textElement>
+                <text><![CDATA[ITINERARIO Y VUELOS (STOCK BOLETO)]]></text>
+            </staticText>
+        </band>
+    </title>
+
+    <columnHeader>
+        <band height="25">
+            <staticText>
+                <reportElement mode="Opaque" x="0" y="0" width="100" height="25" backcolor="#CFCFCF" uuid="e9e00827-897d-4176-963d-424d51624467"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font isBold="true"/></textElement>
+                <text><![CDATA[Ciudad]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="100" y="0" width="80" height="25" backcolor="#CFCFCF" uuid="c24a9c8b-5778-43e8-8b96-6e792c9038d1"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font isBold="true"/></textElement>
+                <text><![CDATA[Vuelo]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="180" y="0" width="60" height="25" backcolor="#CFCFCF" uuid="69a9e3e3-53d9-4828-9842-836798836585"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font isBold="true"/></textElement>
+                <text><![CDATA[Clase]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="240" y="0" width="180" height="25" backcolor="#CFCFCF" uuid="f27e57c8-8978-4364-a690-394463428965"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font isBold="true"/></textElement>
+                <text><![CDATA[Fecha]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="420" y="0" width="80" height="25" backcolor="#CFCFCF" uuid="789d7890-7890-4890-7890-789078907890"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font isBold="true"/></textElement>
+                <text><![CDATA[Estado]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="500" y="0" width="100" height="25" backcolor="#CFCFCF" uuid="678e6789-6789-4789-6789-678967896789"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font isBold="true"/></textElement>
+                <text><![CDATA[V. Llegada]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="600" y="0" width="202" height="25" backcolor="#CFCFCF" uuid="123a1234-1234-4234-a234-123412341234"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font isBold="true"/></textElement>
+                <text><![CDATA[CO2]]></text>
+            </staticText>
+        </band>
+    </columnHeader>
+
+    <detail>
+        <band height="20">
+            <textField isBlankWhenNull="true">
+                <reportElement x="0" y="0" width="100" height="20" uuid="71239845-1234-4cda-9823-71a625348231"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{ciudad}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="100" y="0" width="80" height="20" uuid="81239845-1234-4cda-9823-81a625348232"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{vuelo}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="180" y="0" width="60" height="20" uuid="91239845-1234-4cda-9823-91a625348233"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{clase}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="240" y="0" width="180" height="20" uuid="a1239845-1234-4cda-9823-a1a625348234"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{fecha}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="420" y="0" width="80" height="20" uuid="b1239845-1234-4cda-9823-b1a625348235"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{estado}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="500" y="0" width="100" height="20" uuid="c1239845-1234-4cda-9823-c1a625348236"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{llegada}]]></textFieldExpression>
+            </textField>
+            <textField pattern="#,##0.00" isBlankWhenNull="true">
+                <reportElement x="600" y="0" width="202" height="20" uuid="d1239845-1234-4cda-9823-d1a625348237"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{co2} == null ? 0.0 : $F{co2}.doubleValue()]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+</jasperReport>

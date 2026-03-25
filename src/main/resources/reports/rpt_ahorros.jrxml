@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 6.20.6.final -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="rpt_ahorros" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="d9e84572-1234-4abc-9123-f1a2b3c4d5e6">
+    <property name="net.sf.jasperreports.export.xls.remove.empty.space.between.rows" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.white.page.background" value="false"/>
+    <property name="net.sf.jasperreports.export.xls.detect.cell.type" value="true"/>
+
+    <field name="de_valor" class="java.lang.String"/>
+    <field name="mo_monto" class="java.lang.Double"/>
+
+    <title>
+        <band height="35" splitType="Stretch">
+            <staticText>
+                <reportElement x="0" y="0" width="555" height="30" uuid="a1b2c3d4-e5f6-4789-ba01-234567890abc"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font size="14" isBold="true"/>
+                </textElement>
+                <text><![CDATA[TABLA DE AHORROS]]></text>
+            </staticText>
+        </band>
+    </title>
+
+    <columnHeader>
+        <band height="20" splitType="Stretch">
+            <staticText>
+                <reportElement mode="Opaque" x="0" y="0" width="400" height="20" backcolor="#DEDEDE" uuid="b1234567-89ab-cdef-0123-456789abcdef"/>
+                <box>
+                    <pen lineWidth="0.5"/>
+                </box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Descripción / UDID]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="400" y="0" width="155" height="20" backcolor="#DEDEDE" uuid="c1234567-89ab-cdef-0123-456789abcdef"/>
+                <box>
+                    <pen lineWidth="0.5"/>
+                </box>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font isBold="true"/>
+                </textElement>
+                <text><![CDATA[Monto]]></text>
+            </staticText>
+        </band>
+    </columnHeader>
+
+    <detail>
+        <band height="20" splitType="Stretch">
+            <textField isBlankWhenNull="true">
+                <reportElement x="0" y="0" width="400" height="20" uuid="d1234567-89ab-cdef-0123-456789abcdef"/>
+                <box leftPadding="5">
+                    <pen lineWidth="0.5"/>
+                </box>
+                <textElement verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{de_valor}]]></textFieldExpression>
+            </textField>
+            <textField pattern="#,##0.00" isBlankWhenNull="true">
+                <reportElement x="400" y="0" width="155" height="20" uuid="e1234567-89ab-cdef-0123-456789abcdef"/>
+                <box rightPadding="5">
+                    <pen lineWidth="0.5"/>
+                </box>
+                <textElement textAlignment="Right" verticalAlignment="Middle"/>
+                <textFieldExpression><![CDATA[$F{mo_monto}]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+</jasperReport>

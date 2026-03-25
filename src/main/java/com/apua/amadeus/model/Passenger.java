@@ -4,6 +4,8 @@ import lombok.Data;
 @Data
 public class Passenger {
     private String fullName;
+    private String firstName;
+    private String lastName;
     private String passengerType;   // ADT CHD INF
     private String birthDate;
     private String gender;

@@ -1,8 +1,11 @@
 package com.apua.amadeus.model;
 
+import com.apua.amadeus.dto.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class AirFileData {
@@ -19,8 +22,10 @@ public class AirFileData {
     private String commission;
     private String ticketNumber;
     private String ticketTimeLimit;
+    private String statusComision = "sell";
+    private String signIn;
+    private Double percentageCommission;
 
-    // Campos de metadatos extraídos de Remarks
     private String gender;
     private String carSize;
     private String bedType;
@@ -28,19 +33,31 @@ public class AirFileData {
     private String costCenter;
     private String department;
 
-    // OBJETOS Y LISTAS (Nuevas y antiguas coexisten)
-    private Passenger passenger; // Se mantiene para no romper el código existente
+    private Passenger passenger;
     private List<Passenger> passengers = new ArrayList<>();
+
+    @JsonIgnore // Oculto en JSON
     private List<FlightSegment> segments = new ArrayList<>();
+
     private FareInfo fare;
     private List<HotelSegment> hotels = new ArrayList<>();
+
+    @JsonIgnore // Oculto en JSON
     private List<String> remarks = new ArrayList<>();
+
+    @JsonIgnore // Oculto en JSON
+    private List<Map<String, String>> detailRemarks = new ArrayList<>();
+
     private List<String> ssr = new ArrayList<>();
     private List<String> osi = new ArrayList<>();
     private List<String> rawLines = new ArrayList<>();
     private List<String> miscSegments = new ArrayList<>();
 
-    // Traducción Estructurada para el Frontend
+    private StockBoletoDTO stockBoleto = new StockBoletoDTO();
+    private List<StockBoletoSegmentoDTO> tablaSegmentos = new ArrayList<>();
+    private List<StockBoletoAhorroDTO> tablaAhorros = new ArrayList<>();
+    private List<StockBoletoTarjetaDTO> tablaTarjetas = new ArrayList<>();
+
     private List<TranslatedInfo> structuredRemarks = new ArrayList<>();
     private List<TranslatedInfo> structuredSSR = new ArrayList<>();
     private boolean isExchange;

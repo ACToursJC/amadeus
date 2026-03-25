@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 6.20.6.final -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="rpt_segmentos" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="f9876543-abcd-4321-bcde-f1234567890a">
+    <property name="net.sf.jasperreports.export.xls.remove.empty.space.between.rows" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.detect.cell.type" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.white.page.background" value="false"/>
+
+    <field name="nu_correl" class="java.lang.Integer"/>
+    <field name="ciu_salida" class="java.lang.String"/>
+    <field name="ciu_llegada" class="java.lang.String"/>
+    <field name="cod_la" class="java.lang.String"/>
+    <field name="nu_vuelo" class="java.lang.String"/>
+    <field name="clase" class="java.lang.String"/>
+    <field name="fe_salida" class="java.lang.String"/>
+    <field name="co_fare_basis" class="java.lang.String"/>
+    <field name="tipo_equipo" class="java.lang.String"/>
+    <field name="tiempo_vuelo" class="java.lang.Float"/>
+
+    <title>
+        <band height="40">
+            <staticText>
+                <reportElement x="0" y="0" width="802" height="30" uuid="98765432-1234-5678-90ab-cdef12345678"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font size="16" isBold="true"/>
+                </textElement>
+                <text><![CDATA[DETALLE DE SEGMENTOS AÉREOS]]></text>
+            </staticText>
+        </band>
+    </title>
+
+    <columnHeader>
+        <band height="25">
+            <staticText>
+                <reportElement mode="Opaque" x="0" y="0" width="30" height="25" backcolor="#CFCFCF" uuid="a1111111-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[#]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="30" y="0" width="100" height="25" backcolor="#CFCFCF" uuid="a2222222-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Ruta]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="130" y="0" width="40" height="25" backcolor="#CFCFCF" uuid="a3333333-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Línea]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="170" y="0" width="60" height="25" backcolor="#CFCFCF" uuid="a4444444-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Vuelo]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="230" y="0" width="40" height="25" backcolor="#CFCFCF" uuid="a5555555-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Clase]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="270" y="0" width="150" height="25" backcolor="#CFCFCF" uuid="a6666666-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Fecha Salida]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="420" y="0" width="182" height="25" backcolor="#CFCFCF" uuid="a7777777-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Fare Basis]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="602" y="0" width="100" height="25" backcolor="#CFCFCF" uuid="a8888888-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Equipo]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="702" y="0" width="100" height="25" backcolor="#CFCFCF" uuid="a9999999-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[Tiempo]]></text>
+            </staticText>
+        </band>
+    </columnHeader>
+
+    <detail>
+        <band height="20">
+            <textField isBlankWhenNull="true">
+                <reportElement x="0" y="0" width="30" height="20" uuid="b1111111-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{nu_correl}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="30" y="0" width="100" height="20" uuid="b2222222-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{ciu_salida} + " - " + $F{ciu_llegada}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="130" y="0" width="40" height="20" uuid="b3333333-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{cod_la}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="170" y="0" width="60" height="20" uuid="b4444444-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{nu_vuelo}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="230" y="0" width="40" height="20" uuid="b5555555-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{clase}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="270" y="0" width="150" height="20" uuid="b6666666-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{fe_salida}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="420" y="0" width="182" height="20" uuid="b7777777-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{co_fare_basis}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="602" y="0" width="100" height="20" uuid="b8888888-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{tipo_equipo}]]></textFieldExpression>
+            </textField>
+            <textField pattern="#,##0.00" isBlankWhenNull="true">
+                <reportElement x="702" y="0" width="100" height="20" uuid="b9999999-2222-3333-4444-555555555555"/>
+                <box><pen lineWidth="0.5"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{tiempo_vuelo}]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+</jasperReport>
