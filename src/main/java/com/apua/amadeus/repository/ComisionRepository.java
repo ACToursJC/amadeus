@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ComisionRepository extends JpaRepository<Comision, Long> {
-    // Busca si ya existe un registro con ese PNR
     boolean existsByPnrId(String pnrId);
+    boolean existsByPnrIdAndFacNumero(String pnrId, String facNumero);
+    boolean existsByPnrIdAndConfirmationCode(String pnrId, String confirmationCode);
 }

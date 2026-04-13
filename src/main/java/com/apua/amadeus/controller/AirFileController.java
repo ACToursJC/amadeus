@@ -37,7 +37,7 @@ public class AirFileController {
         return airParserService.parseAllFiles();
     }
 
-    @PostMapping("/files/import")
+    @GetMapping("/files/import")
     public ResponseEntity<String> importToDatabase() {
         try {
             airImportService.processAndSaveAllFiles();

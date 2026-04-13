@@ -3,9 +3,9 @@ package com.apua.amadeus.service;
 import com.apua.amadeus.entity.Comision;
 import com.apua.amadeus.model.*;
 import com.apua.amadeus.repository.ComisionRepository;
+import java.io.IOException;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.*;
@@ -17,7 +17,6 @@ public class AirImportService {
     private final AirParserService airParserService;
     private final ComisionRepository comisionRepository;
 
-    // Definición de rutas para el movimiento de archivos
     private final Path sourcePath = Paths.get("F:/Amadeus/air4");
     private final Path targetPath = Paths.get("F:/Amadeus/air5");
 
@@ -30,159 +29,176 @@ public class AirImportService {
         List<AirFileData> airList = airParserService.parseAllFiles();
 
         for (AirFileData data : airList) {
-            String fileName = data.getFileName();
             try {
-                // 1. OBTENCIÓN DEL PNR (Búsqueda robusta)
+                // 1. Obtener PNR
                 String pnrReal = (data.getPnr() != null) ? data.getPnr() :
                         (data.getStockBoleto() != null ? data.getStockBoleto().getNu_pnr() : null);
 
-                // Si no hay PNR o ya existe en la base de datos, movemos el archivo y saltamos
-                if (pnrReal == null || comisionRepository.existsByPnrId(pnrReal)) {
-                    moveFileToProcessed(fileName);
+                if (pnrReal == null) {
+                    moveFileToProcessed(data.getFileName());
                     continue;
                 }
 
-                Comision c = new Comision();
+                // 2. Validación de Duplicados (PNR + Ticket ó PNR + ConfirmaciónCode)
+                //    Permite PNR duplicado pero valida por boleto ó servicio
+                boolean yaExiste = false;
+                String ticketFull = data.getTicketNumber();
+                String ticketShort = (ticketFull != null && ticketFull.length() > 10)
+                        ? ticketFull.substring(ticketFull.length() - 10) : ticketFull;
 
-                // 2. DATOS DE AGENCIA E IDENTIFICACIÓN
-                c.setPnrId(pnrReal);
-                c.setNombreArchivo(fileName);
-                c.setSignIn(data.getSignIn());
-                c.setOfficeId(data.getOfficeId() != null ? data.getOfficeId() :
-                        (data.getStockBoleto() != null ? data.getStockBoleto().getCo_seudo() : null));
-
-                // IATA y Office Name (Capturados desde la línea A- en el parser)
-                c.setIataNumber(data.getIataNumber());
-                c.setOfficeName(data.getAgencyName());
-                c.setAgencyName(data.getAgencyName());
-
-                c.setEstado("PEN");
-                c.setStatusComision(data.getStatusComision() != null ? data.getStatusComision() : "sell");
-                c.setDe_vendedor(data.getJobTitle());
-                c.setFechaCreacion(data.getIssuingDate() != null ? java.sql.Date.valueOf(data.getIssuingDate()) : new java.util.Date());
-
-                // 3. PASAJERO
-                if (data.getPassenger() != null) {
-                    c.setGuestFirstName(data.getPassenger().getFirstName());
-                    c.setGuestLastName(data.getPassenger().getLastName());
+                if (ticketShort != null && !ticketShort.isEmpty()) {
+                    yaExiste = comisionRepository.existsByPnrIdAndFacNumero(pnrReal, ticketShort);
+                } else if (data.getHotels() != null && !data.getHotels().isEmpty()) {
+                    String conf = data.getHotels().get(0).getConfirmationNumber();
+                    if (conf != null) {
+                        yaExiste = comisionRepository.existsByPnrIdAndConfirmationCode(pnrReal, safeTruncate(conf, 115));
+                    }
+                } else {
+                    yaExiste = comisionRepository.existsByPnrId(pnrReal);
                 }
 
-                // 4. LÓGICA FINANCIERA (Iniciamos en 0 para asegurar que solo sume Hotel si existe)
-                BigDecimal hotelTotalFinal = BigDecimal.ZERO;
+                if (yaExiste) {
+                    System.out.println("⏭️ Saltando duplicado: PNR " + pnrReal + " (" + data.getFileName() + ")");
+                    moveFileToProcessed(data.getFileName());
+                    continue;
+                }
+
+                // 3. Crear Entidad y mapear Metadatos
+                Comision c = new Comision();
+                c.setPnrId(safeTruncate(pnrReal, 10));
+                c.setNombreArchivo(safeTruncate(data.getFileName(), 255));
+                c.setSignIn(safeTruncate(data.getSignIn(), 10));
+                c.setOfficeId(safeTruncate(data.getOfficeId() != null ? data.getOfficeId() : (data.getStockBoleto() != null ? data.getStockBoleto().getCo_seudo() : ""), 10));
+                c.setAgencyName(safeTruncate(data.getAgencyName(), 40));
+                c.setIataNumber(safeTruncate(data.getIataNumber(), 20));
+                c.setDe_vendedor(safeTruncate(data.getJobTitle(), 255));
+                c.setFechaCreacion(new java.util.Date());
+                c.setEstado(safeTruncate("PEN", 10));
+                c.setIdUsuario(safeTruncate(data.getSignIn(), 6));
+                c.setStatusComision(safeTruncate("sell", 50));
+
+                if (data.getPassenger() != null) {
+                    c.setGuestFirstName(safeTruncate(data.getPassenger().getFirstName(), 50));
+                    c.setGuestLastName(safeTruncate(data.getPassenger().getLastName(), 50));
+                }
+
+                // 4. Lógica Financiera Acumulativa (Aéreo + Hotel)
+                BigDecimal montoAereo = BigDecimal.ZERO;
+                BigDecimal montoHotel = BigDecimal.ZERO;
                 String monedaFinal = "USD";
 
-                // 5. LÓGICA DE HOTEL (CORREGIDA PARA SOLO TOTAL HOTEL)
+                // Datos Aéreos
+                if (data.getFare() != null && data.getFare().getTotalFare() != null) {
+                    montoAereo = BigDecimal.valueOf(data.getFare().getTotalFare());
+                    monedaFinal = data.getFare().getCurrency();
+                    c.setFacNumero(ticketShort);
+                    c.setFormaPago(safeTruncate(data.getFormOfPayment(), 5));
+                }
+
+                // Datos de Hotel
                 if (data.getHotels() != null && !data.getHotels().isEmpty()) {
                     HotelSegment h = data.getHotels().get(0);
-
-                    c.setHotelName(h.getHotelName());
-                    c.setHotelChainName(h.getChainName());
-                    c.setChainCode(h.getChainCode());
-                    c.setHotelCityCode(h.getCityCode());
-                    c.setCityName(h.getCityName());
-                    c.setRoomType(h.getRoomType());
-                    c.setConfirmationCode(h.getConfirmationNumber());
+                    c.setHotelName(safeTruncate(h.getHotelName(), 150));
+                    c.setHotelCityCode(safeTruncate(h.getCityCode(), 3));
+                    c.setCityName(safeTruncate(h.getCityName(), 100));
+                    c.setConfirmationCode(safeTruncate(h.getConfirmationNumber(), 115));
                     c.setNumberOfNights(h.getNumberOfNights());
+                    c.setHotelChainName(safeTruncate(h.getChainName(), 150));
+                    c.setChainCode(safeTruncate(h.getChainCode(), 2));
+                    c.setRoomType(safeTruncate(h.getRoomType(), 3));
+                    c.setRoomDescription(h.getRoomType());
 
                     if (h.getCheckInDate() != null) c.setCheckInDate(java.sql.Date.valueOf(h.getCheckInDate()));
                     if (h.getCheckOutDate() != null) c.setCheckOutDate(java.sql.Date.valueOf(h.getCheckOutDate()));
 
-                    c.setRoomDescription(String.join(" | ", h.getDailyRates()));
-
-                    // TRATAMIENTO DE MONEDA DEL HOTEL
-                    String rawHotelCurr = h.getCurrency() != null ? h.getCurrency() : "USD";
-                    String cleanHotelCurr = rawHotelCurr.replace("TTL-", "").replace("USDUSD", "USD").trim();
-
-                    c.setHotelPriceCurrency(cleanHotelCurr);
-                    c.setRateplanCurrencyCode(cleanHotelCurr.length() > 3 ? cleanHotelCurr.substring(0, 3) : cleanHotelCurr);
-                    monedaFinal = c.getRateplanCurrencyCode();
-
-                    // TOTAL DEL HOTEL (HotelPrice debe ser el total acumulado de todas las noches)
-                    if (h.getTtlAmount() != null && !h.getTtlAmount().isEmpty()) {
-                        hotelTotalFinal = new BigDecimal(h.getTtlAmount());
+                    if (h.getTotalAmount() != null && !h.getTotalAmount().isEmpty()) {
+                        montoHotel = new BigDecimal(h.getTotalAmount());
                     } else if (h.getPricePerNight() != null) {
-                        // Si no hay TTL, calculamos: Precio noche * cantidad de noches
-                        hotelTotalFinal = new BigDecimal(h.getPricePerNight())
-                                .multiply(new BigDecimal(h.getNumberOfNights() > 0 ? h.getNumberOfNights() : 1));
+                        montoHotel = new BigDecimal(h.getPricePerNight()).multiply(new BigDecimal(h.getNumberOfNights() > 0 ? h.getNumberOfNights() : 1));
                     }
+                    c.setHotelPrice(montoHotel);
+                    c.setHotelPriceCurrency(safeTruncate(h.getCurrency(), 4));
 
-                    c.setHotelPrice(hotelTotalFinal);
-                    c.setRateplanTotalPrice(hotelTotalFinal);
-
-                    // COMISIÓN (Calculada sobre el total del hotel)
-                    if (h.getHotelCommission() != null) {
-                        String commVal = h.getHotelCommission().replaceAll("[^0-9.]", "");
-                        if (!commVal.isEmpty()) {
-                            BigDecimal pct = new BigDecimal(commVal);
-                            c.setPorComision(pct);
-                            BigDecimal montoCom = hotelTotalFinal.multiply(pct).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
-                            c.setComisionTotal(montoCom);
-                            c.setComisionTotalReal(montoCom);
-                        }
+                    if (montoAereo.compareTo(BigDecimal.ZERO) == 0) {
+                        monedaFinal = h.getCurrency();
                     }
                 }
 
-                // 6. REMARKS ESTRUCTURADOS (País, Fee, Cambio)
+                // Totales Finales
+                c.setMoneda(safeTruncate(monedaFinal, 3));
+                c.setMonto(montoAereo.add(montoHotel));
+                c.setTotal(montoAereo.add(montoHotel));
+
+                // 5. Comisiones y Remarks Estructurados
+                calculateAndSetCommissions(data, c);
+
                 for (TranslatedInfo rem : data.getStructuredRemarks()) {
-                    String val = rem.getHumanValue();
-
-                    if (val.contains("HOTCOUNTRY-")) {
-                        String country = val.split("HOTCOUNTRY-")[1].split("/")[0].trim();
-                        if (!country.equalsIgnoreCase("SUNDEFINED")) {
-                            c.setHotelCountryCode(country);
-                            c.setHotelCountry(country.equals("PE") ? "PERU" : country);
-                        }
-                    }
-
-                    if ("FEE_AEREO_VALOR".equals(rem.getCategory())) {
-                        c.setFee(new BigDecimal(val));
-                    }
-
                     if ("TIPO_CAMBIO".equals(rem.getCategory())) {
-                        c.setTipoCambio(val.length() > 2 ? val.substring(0, 2) : val);
+                        c.setTipoCambio(safeTruncate(rem.getHumanValue(), 2));
+                    }
+                    if ("FEE_AEREO_VALOR".equals(rem.getCategory())) {
+                        try { c.setFee(new BigDecimal(rem.getHumanValue())); } catch (Exception e) {}
                     }
                 }
 
-                // 7. ASIGNACIÓN FINAL DE MONTOS (SOLO HOTEL)
-                if (data.getFormOfPayment() != null) {
-                    String fp = data.getFormOfPayment();
-                    c.setFormaPago(fp.length() > 5 ? fp.substring(0, 5) : fp);
+                // 6. Observaciones Combinadas (TEXT en DB)
+                StringBuilder sb = new StringBuilder();
+                if (data.getPassenger() != null && data.getPassenger().getEmergencyContactPhone() != null) {
+                    sb.append("EMER: ").append(data.getPassenger().getEmergencyContactPhone()).append(" | ");
                 }
+                sb.append("CC: ").append(data.getCostCenter()).append(" | DEPT: ").append(data.getDepartment()).append(" | ");
 
-                // Seteamos el monto y total únicamente con el valor del hotel
-                c.setMoneda(monedaFinal);
-                c.setMonto(hotelTotalFinal);
-                c.setTotal(hotelTotalFinal);
+                if (!data.getSegments().isEmpty()) {
+                    sb.append("RUTA: ");
+                    data.getSegments().forEach(s -> sb.append(s.getOrigin()).append("-").append(s.getDestination()).append(" "));
+                    sb.append("| ");
+                }
+                sb.append("RMK: ").append(String.join("/", data.getRemarks()));
 
-                c.setObservaciones(String.join(" | ", data.getRemarks()));
+                c.setObservaciones(sb.toString());
 
-                // Guardar registro
+                // 7. Guardar y Procesar Archivo
                 comisionRepository.save(c);
-
-                // Mover archivo procesado a air5
-                moveFileToProcessed(fileName);
+                System.out.println("✅ Importado con éxito: " + data.getFileName());
+                moveFileToProcessed(data.getFileName());
 
             } catch (Exception e) {
-                System.err.println("Error procesando " + fileName + ": " + e.getMessage());
+                System.err.println("❌ Error procesando " + data.getFileName() + " -> " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
 
-    //Mueve el archivo de la carpeta air4 a air5
+    private String safeTruncate(String value, int maxLength) {
+        if (value == null || value.trim().isEmpty()) return null;
+        String cleaned = value.trim();
+        return (cleaned.length() <= maxLength) ? cleaned : cleaned.substring(0, maxLength);
+    }
+
+    private void calculateAndSetCommissions(AirFileData data, Comision c) {
+        BigDecimal total = BigDecimal.ZERO;
+        try {
+            if (data.getCommission() != null && data.getFare() != null && data.getFare().getBaseFare() != null) {
+                BigDecimal porc = new BigDecimal(data.getCommission());
+                c.setPorComision(porc);
+                total = BigDecimal.valueOf(data.getFare().getBaseFare()).multiply(porc).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            }
+        } catch (Exception e) {}
+        c.setComisionTotal(total);
+        c.setComisionTotalReal(total);
+    }
+
     private void moveFileToProcessed(String fileName) {
         try {
-            if (!Files.exists(targetPath)) {
-                Files.createDirectories(targetPath);
-            }
+            if (!Files.exists(targetPath)) Files.createDirectories(targetPath);
             Path source = sourcePath.resolve(fileName);
             Path target = targetPath.resolve(fileName);
-
             if (Files.exists(source)) {
                 Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("Archivo movido exitosamente a air5: " + fileName);
+                System.out.println("Archivo movido: " + fileName);
             }
         } catch (IOException e) {
-            System.err.println("Error al mover el archivo " + fileName + ": " + e.getMessage());
+            System.err.println("Error moviendo archivo: " + fileName);
         }
     }
 }

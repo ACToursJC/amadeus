@@ -49,56 +49,104 @@ public class AirParserService {
     private AirFileData parseSingleFile(Path path) {
         AirFileData airData = new AirFileData();
         airData.setFileName(path.getFileName().toString());
-        airData.setOperationType("sell");
+
+        // Inicialización de contenedores
         FareInfo fare = new FareInfo();
         fare.setTaxes(new ArrayList<>());
+        airData.setFare(fare);
+
         Map<String, Passenger> passengerMap = new LinkedHashMap<>();
         List<String> fareBasisList = new ArrayList<>();
 
         try {
             List<String> lines = Files.readAllLines(path);
+            airData.setRawLines(lines);
 
+            // 1. Búsqueda de metadatos rápidos (Ejecutiva/Vendedor)
             for (String line : lines) {
                 if (line.contains("EJECUTIVA")) {
-                    String cleanExec = line.split("EJECUTIVA")[1].replaceAll("^[^A-Z]+", "").replaceAll("[;]+$", "").trim();
-                    airData.setJobTitle(cleanExec);
+                    String[] parts = line.split("EJECUTIVA");
+                    if (parts.length > 1) {
+                        String cleanExec = parts[1].replaceAll("^[^A-Z]+", "").replaceAll("[;]+$", "").trim();
+                        airData.setJobTitle(cleanExec);
+                    }
                     break;
                 }
             }
 
+            // 2. Procesamiento línea por línea
             for (String line : lines) {
                 if (line.trim().isEmpty()) continue;
+
+                // Identificación de cabeceras y metadatos base
                 if (line.startsWith("MUC1A")) parseHeaderMUC(line, airData);
                 else if (line.startsWith("A-")) parseAgency(line, airData);
                 else if (line.startsWith("C-")) parseLineC(line, airData);
                 else if (line.startsWith("D-")) parseLineD(line, airData);
+
+                    // Pasajeros
                 else if (line.startsWith("I-")) {
                     Passenger p = parsePassengerLine(line, airData, passengerMap);
                     if (p != null) {
-                        passengerMap.put("P1", p);
-                        airData.setPassenger(p);
+                        String pId = "P" + (airData.getPassengers().size() + 1);
+                        passengerMap.put(pId, p);
+                        if (airData.getPassenger() == null) airData.setPassenger(p);
                         airData.getPassengers().add(p);
-                        airData.getStockBoleto().setDe_pasajero(p.getLastName() + " . " + p.getFirstName());
+                        // Nombre inicial para el StockBoleto
+                        airData.getStockBoleto().setDe_pasajero(p.getLastName() + " / " + p.getFirstName());
                     }
                 }
+
+                // Segmentos (Vuelo y Hotel)
                 else if (line.startsWith("H-")) parseFlightSegment(line, airData);
-                else if (line.startsWith("M-")) fareBasisList = parseFareBasis(line);
+                else if (line.startsWith("M-")) fareBasisList.addAll(parseFareBasis(line));
                 else if (line.startsWith("U-")) parseAuxiliarySegment(line, airData);
+
+                    // Tarifas e Impuestos
                 else if (line.startsWith("K-")) parseFare(line, fare, airData);
-                else if (line.startsWith("TAX-")) parseTaxes(line, fare);
-                else if (line.startsWith("T-K") || line.startsWith("FH")) parseTicketResilient(line, airData);
+                else if (line.startsWith("TAX-") || line.startsWith("KFTF") || line.startsWith("KNTF") || line.startsWith("KSTF")) {
+                    parseTaxes(line, fare);
+                }
+
+                // Boleto y Formas de Pago
+                else if (line.startsWith("T-K") || line.startsWith("T-B") || line.startsWith("FH")) {
+                    parseTicketResilient(line, airData);
+                }
                 else if (line.startsWith("FP")) parseFormOfPayment(line, airData);
-                else if (line.startsWith("FM")) airData.setCommission(line.substring(2).replaceAll("[^0-9.]", ""));
+                else if (line.startsWith("FM")) {
+                    String comm = line.substring(2).replaceAll("[^0-9.]", "");
+                    if (!comm.isEmpty()) airData.setCommission(comm);
+                }
+
+                // Remarks, SSR y OSI (Metadatos extra)
                 else if (line.startsWith("RM")) processRemark(line, airData);
                 else if (line.startsWith("SSR")) processSSR(line, airData, passengerMap);
+                else if (line.startsWith("OSI")) processOSI(line, airData); // Nuevo método integrado
+
+                    // Cálculos y Rutas
                 else if (line.startsWith("Q-")) parseFareCalculation(line, fare, airData);
             }
 
+            // 3. Post-procesamiento
             mapFareBasisToSegments(airData, fareBasisList);
             buildRouteArray(airData);
-            enrichDataPostParsing(airData);
-            airData.setFare(fare);
-        } catch (Exception e) { e.printStackTrace(); }
+            enrichDataPostParsing(airData); // Importante para consolidar datos de hotel y metadatos
+
+            // Determinar tipo de operación final
+            boolean tieneVuelos = !airData.getSegments().isEmpty();
+            boolean tieneHoteles = !airData.getHotels().isEmpty();
+
+            if (tieneVuelos && tieneHoteles) {
+                airData.setOperationType("MIXTO");
+            } else if (tieneHoteles) {
+                airData.setOperationType("HOTEL");
+            } else {
+                airData.setOperationType("AEREO");
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error crítico parseando " + path.getFileName() + ": " + e.getMessage());
+        }
         return airData;
     }
 
@@ -161,7 +209,7 @@ public class AirParserService {
                 main.getEstadosVuelo().add(segDTO.getCod_estado());
                 main.getFechasVuelo().add(segDTO.getFe_salida());
                 main.getCo2Valores().add(segDTO.getCo2());
-                main.getHorasLlegada().add(s.getArrivalTime());
+                main.getHorasLlegada().add(f[5].substring(0,2) + ":" + f[5].substring(2,4));
             }
 
             s.setOrigin(segDTO.getCiu_salida());
@@ -172,118 +220,200 @@ public class AirParserService {
     }
 
     private void parseAuxiliarySegment(String line, AirFileData data) {
-        if (!line.contains("HHL") && !line.contains("HTL") && !line.contains("GK")) return;
         try {
             String[] parts = line.split(";");
-            HotelSegment h = new HotelSegment();
+            if (parts.length < 6) return;
+            String segmentType = parts[1].trim();
 
-            String rawSt = parts[1].trim();
-            Matcher mSt = Pattern.compile("([A-Z]{2})").matcher(rawSt);
-            if (mSt.find()) h.setStatus(STATUS_CODES.getOrDefault(mSt.group(1), mSt.group(1)));
-
-            h.setCheckInDate(normalizeShortDate(extractDate(parts[2]), data.getIssuingDate(), "-"));
-            h.setCheckOutDate(normalizeShortDate(extractDate(parts[3]), data.getIssuingDate(), "-"));
-            h.setCityCode(parts[4].trim());
-            h.setCityName(parts[5].trim());
-
-            for (String p : parts) {
-                p = p.trim();
-                if (p.startsWith("CF-")) h.setConfirmationNumber(p.substring(3));
-                if (p.startsWith("RO-")) h.setRoomType(p.substring(3));
-                if (p.startsWith("TTL-")) h.setTtlAmount(p.substring(4).replaceAll("[^0-9.]", ""));
-                if (p.startsWith("COM-")) h.setHotelCommission(p.substring(4));
-                if (p.startsWith("**-")) {
-                    h.setHotelName(p.substring(3).trim());
-                    h.setChainName(h.getHotelName().split("\\s+")[0]);
+            // --- CASO HOTEL ---
+            if (segmentType.contains("HHL") || segmentType.contains("HTL")) {
+                HotelSegment h = new HotelSegment();
+                String[] typeParts = segmentType.split("\\s+");
+                if (typeParts.length >= 3) {
+                    h.setChainCode(typeParts[1]);
+                    h.setChainName(CHAIN_NAMES.getOrDefault(typeParts[1], ""));
+                    h.setStatus(STATUS_CODES.getOrDefault(typeParts[2].substring(0, 2), typeParts[2]));
                 }
-                if (p.matches("\\d+\\.\\d+\\+\\d{2}[A-Z]{3}\\+\\d+")) {
-                    h.getDailyRates().add(p);
-                    String[] drParts = p.split("\\+");
-                    HotelSegment.DailyRateDetail detail = new HotelSegment.DailyRateDetail();
-                    detail.setRate(drParts[0]);
-                    detail.setDate(normalizeShortDate(drParts[1], data.getIssuingDate(), "/"));
-                    detail.setNights(drParts[2]);
-                    h.getDailyRateDetails().add(detail);
-                    if (h.getPricePerNight() == null) h.setPricePerNight(drParts[0]);
+                h.setCheckInDate(normalizeShortDate(extractDate(parts[2]), data.getIssuingDate(), "-"));
+                h.setCheckOutDate(normalizeShortDate(extractDate(parts[3]), data.getIssuingDate(), "-"));
+                h.setCityCode(parts[4].trim());
+                h.setCityName(parts[5].trim());
+
+                for (int i = 6; i < parts.length; i++) {
+                    String p = parts[i].trim();
+                    if (p.isEmpty()) continue;
+
+                    if (p.startsWith("**-")) {
+                        String val = p.substring(3).trim();
+                        if (val.isEmpty() && i + 1 < parts.length) val = parts[++i].trim();
+                        h.setHotelName(val);
+                    }
+                    else if (p.startsWith("CF-")) {
+                        String val = p.substring(3).trim();
+                        if (val.isEmpty() && i + 1 < parts.length) val = parts[++i].trim();
+                        h.setConfirmationNumber(val);
+                    }
+                    else if (p.startsWith("TTL-")) {
+                        String val = p.substring(4).trim();
+                        if (val.isEmpty() && i + 1 < parts.length) val = parts[++i].trim();
+                        String clean = val.replaceAll("[^0-9.]", "");
+                        h.setTtlAmount(clean); h.setTotalAmount(clean);
+                        if (val.contains("USD")) h.setCurrency("USD");
+                        else if (val.contains("PEN")) h.setCurrency("PEN");
+                    }
+                    else if (p.startsWith("COM-")) {
+                        String val = p.substring(4).trim();
+                        if (val.isEmpty() && i + 1 < parts.length) val = parts[++i].trim();
+                        h.setHotelCommission(val);
+                    }
+                    else if (p.startsWith("RO-") || p.startsWith("DES-")) {
+                        String val = p.substring(p.indexOf("-") + 1).trim();
+                        if (val.isEmpty() && i + 1 < parts.length && !parts[i+1].contains("-")) val = parts[++i].trim();
+                        if (h.getRoomType() == null || h.getRoomType().isEmpty()) h.setRoomType(val);
+                    }
+                    // PRIORIDAD TELÉFONO: Bloques de 8+ dígitos o que contengan guiones/espacios telefónicos
+                    else if (p.matches("^[0-9]{8,20}$") || p.matches("^[0-9\\s\\-]{8,20}$") || p.startsWith("PH-")) {
+                        if (h.getPhoneNumber() == null) h.setPhoneNumber(p.replace("PH-", "").trim());
+                    }
+                    // DIRECCIÓN LIMPIA
+                    else if (!p.matches("^[A-Z]{2,3}-.*") && h.getHotelName() != null && h.getAddress() == null) {
+                        if (p.equals("+") || p.length() < 3 || p.matches("^[0-9]{7}$")) continue; // Ignorar CP de 7 dígitos o "+"
+                        StringBuilder addr = new StringBuilder(p);
+                        while (i + 1 < parts.length && !parts[i+1].matches("^[A-Z]{2,3}-.*")) {
+                            String next = parts[i+1].trim();
+                            // Si el siguiente bloque parece teléfono, lo asignamos y cortamos la dirección
+                            if (next.matches("^[0-9\\s\\-]{8,20}$")) {
+                                if (h.getPhoneNumber() == null) h.setPhoneNumber(next);
+                                i++; break;
+                            }
+                            if (next.contains("BED") || next.contains("PUBLISHED") || next.contains("EJECUTIVA") || next.equals("+")) break;
+                            addr.append("  ").append(next);
+                            i++;
+                        }
+                        h.setAddress(addr.toString().trim());
+                    }
+                    else if (p.matches("\\d+\\.\\d+\\+\\d{2}[A-Z]{3}\\+\\d+")) {
+                        h.getDailyRates().add(p);
+                        String[] dr = p.split("\\+");
+                        HotelSegment.DailyRateDetail detail = new HotelSegment.DailyRateDetail();
+                        detail.setRate(dr[0]);
+                        detail.setDate(normalizeShortDate(dr[1], data.getIssuingDate(), "/"));
+                        detail.setNights(dr[2]);
+                        h.getDailyRateDetails().add(detail);
+                        if (h.getPricePerNight() == null) h.setPricePerNight(dr[0]);
+                    }
                 }
-                if (p.contains("USD") || p.contains("PEN")) h.setCurrency(p.replaceAll("[0-9.+]", ""));
-            }
-            if (h.getCheckInDate() != null && h.getCheckOutDate() != null) {
                 h.setNumberOfNights((int) ChronoUnit.DAYS.between(LocalDate.parse(h.getCheckInDate()), LocalDate.parse(h.getCheckOutDate())));
+                data.getHotels().add(h);
             }
-            data.getHotels().add(h);
+
+            // --- CASO VUELO (Línea U) ---
+            else if (parts.length >= 7 && (parts[5].contains(" ") && (parts[5].contains("LA ") || parts[5].matches(".*[A-Z]{2}\\s+\\d{4}.*")))) {
+                StockBoletoSegmentoDTO segDTO = new StockBoletoSegmentoDTO();
+                FlightSegment s = new FlightSegment();
+                StockBoletoDTO main = data.getStockBoleto();
+                segDTO.setNu_correl(data.getTablaSegmentos().size() + 1);
+
+                // ORIGEN/DESTINO CORRECTO
+                String originRaw = parts[1].trim();
+                String originCode = originRaw.length() >= 3 ? originRaw.substring(originRaw.length() - 3) : originRaw;
+                segDTO.setCiu_salida(originCode);
+                segDTO.setCiu_llegada(parts[3].trim());
+
+                String[] f = parts[5].trim().split("\\s+");
+                if (f.length >= 7) {
+                    segDTO.setCod_la(f[0]); segDTO.setNu_vuelo(f[1]); segDTO.setClase(f[2]);
+                    if (parts.length > 10) { segDTO.setTipo_equipo(parts[10].trim()); s.setEquipment(parts[10].trim()); }
+                    String depDate = normalizeShortDate(f[4].substring(0, 5), data.getIssuingDate(), "-");
+                    String depTime = f[4].substring(5, 7) + ":" + f[4].substring(7, 9);
+                    segDTO.setFe_salida(depDate + " " + depTime + ":00.000");
+                    String arrTimeStr = f[5].substring(0, 2) + ":" + f[5].substring(2, 4);
+                    String arrDate = normalizeShortDate(f[6], data.getIssuingDate(), "-");
+                    segDTO.setFe_llegada(arrDate + " " + arrTimeStr + ":00.000");
+                    s.setAirline(f[0]); s.setFlightNumber(f[1]); s.setBookingClass(f[2]);
+                    s.setDepartureDate(depDate); s.setArrivalDate(arrDate); s.setArrivalTime(f[5]);
+                }
+                segDTO.setCod_estado(parts[6].trim().substring(0, Math.min(2, parts[6].trim().length())));
+                if (line.contains("CO2-")) segDTO.setCo2(Double.parseDouble(line.split("CO2-")[1].split("KG")[0].replaceAll("[^0-9.]", "")));
+                if (!main.getCiudades().contains(segDTO.getCiu_salida())) main.getCiudades().add(segDTO.getCiu_salida());
+                if (!main.getCiudades().contains(segDTO.getCiu_llegada())) main.getCiudades().add(segDTO.getCiu_llegada());
+                main.getNroVuelos().add(segDTO.getNu_vuelo()); main.getClases().add(segDTO.getClase());
+                main.getFechasVuelo().add(segDTO.getFe_salida()); main.getEstadosVuelo().add(segDTO.getCod_estado());
+                main.getCo2Valores().add(segDTO.getCo2() != null ? segDTO.getCo2() : 0.0);
+                if (s.getArrivalTime() != null && s.getArrivalTime().length() >= 4) main.getHorasLlegada().add(s.getArrivalTime().substring(0,2) + s.getArrivalTime().substring(2,4));
+                data.getSegments().add(s); data.getTablaSegmentos().add(segDTO);
+            }
         } catch (Exception e) {}
     }
 
     private void processRemark(String line, AirFileData data) {
-        String raw = line.substring(2).trim().replaceAll("^[*+/\\s]+", "");
-        Map<String, String> detail = new HashMap<>();
+        String raw = line.substring(2).trim();
+        String clean = raw.replaceAll("^[*+/\\s]+", "").replace("RM*", "");
 
-        // Captura de metadatos básicos
-        if (raw.startsWith("GENDER-")) {
-            data.setGender(raw.split("-")[1].split(";")[0].trim());
-            detail.put("gender", data.getGender());
-        } else if (raw.startsWith("BED TYPE-")) {
-            data.setBedType(raw.split("-")[1].split(";")[0].trim());
-            detail.put("bedType", data.getBedType());
-        } else if (raw.startsWith("CAR SIZE-")) {
-            data.setCarSize(raw.split("-")[1].split(";")[0].trim());
-            detail.put("carSize", data.getCarSize());
-        } else if (raw.startsWith("DP=")) {
-            data.setDepartment(raw.substring(3).split(";")[0].trim());
-            detail.put("department", data.getDepartment());
-        } else if (raw.startsWith("CC=")) {
-            data.setCostCenter(raw.substring(3).split(";")[0].trim());
-            detail.put("costCenter", data.getCostCenter());
-        } else if (raw.startsWith("SOLICITUD=")) {
-            String sol = raw.split("=")[1].trim();
-            data.getStockBoleto().setNu_file(sol);
-            detail.put("solicitudId", sol);
-        } else if (raw.contains("VALORFEE")) {
-            String fee = raw.replaceAll("[^0-9.]", "");
+        // 1. Asignación a campos raíz
+        if (clean.startsWith("DP=")) data.setDepartment(clean.split("=")[1].split(";")[0].trim());
+        else if (clean.startsWith("CC=")) data.setCostCenter(clean.split("=")[1].split(";")[0].trim());
+        else if (clean.startsWith("CAR SIZE-")) data.setCarSize(clean.split("-")[1].split(";")[0].trim());
+        else if (clean.startsWith("BED TYPE-")) data.setBedType(clean.split("-")[1].split(";")[0].trim());
+        else if (clean.startsWith("GENDER-")) data.setGender(clean.split("-")[1].split(";")[0].trim());
+        else if (clean.startsWith("JOB TITLE-")) data.setJobTitle(clean.split("-", 2)[1].split(";")[0].replace("TITLE -", "").trim());
+        else if (clean.startsWith("SOLICITUD=")) data.getStockBoleto().setNu_file(clean.split("=")[1].trim());
+        else if (clean.contains("VALORFEE")) {
+            String fee = clean.replaceAll("[^0-9.]", "");
             data.getStructuredRemarks().add(new TranslatedInfo("FEE_AEREO_VALOR", "RM", fee, ""));
-            detail.put("valorFee", fee);
+        }
+        else if (clean.contains("DOC DNI:")) {
+            String dni = clean.split("DNI:")[1].split(";")[0].trim();
+            if (data.getPassenger() != null) data.getPassenger().setDocumentId(dni);
         }
 
-        // LÓGICA EXTENDIDA PARA tablaAhorros
-        // 1. UDIDs Tradicionales (S*BREAK)
-        if (raw.startsWith("DP=") || raw.startsWith("CC=") || raw.startsWith("EN=")) {
-            String key = raw.startsWith("DP") ? "1" : raw.startsWith("CC") ? "2" : "3";
-            addAhorro(data, "S*BREAK" + key + "-" + raw.substring(raw.indexOf("=")+1), 0.0);
-        }
-
-        // 2. UDIDs de Negocio (TRE, CC2, SSA)
-        if (raw.startsWith("TRE=")) {
-            addAhorro(data, "FCM UDID 1-" + raw.split("=")[1].trim(), 0.0);
-        } else if (raw.startsWith("CC2=")) {
-            addAhorro(data, "FCM UDID 2-" + raw.split("=")[1].trim(), 0.0);
-        } else if (raw.startsWith("SSA=")) {
-            addAhorro(data, "FCM UDID 3-" + raw.split("=")[1].trim(), 0.0);
-        }
-
-        // 3. Benchmarks de Tarifas (QCHF, QCMK, QCLF) con montos
-        if (raw.startsWith("QCHF/") || raw.startsWith("QCMK/") || raw.startsWith("QCLF/")) {
-            String[] p = raw.split("/");
-            if(p.length > 1) {
-                addAhorro(data, p[0], Double.parseDouble(p[1].replaceAll("[^0-9.]", "")));
+        // 2. Fallback para Metadatos de Hotel (APPFCM)
+        if (clean.startsWith("APPFCM/") && !data.getHotels().isEmpty()) {
+            HotelSegment lastH = data.getHotels().get(data.getHotels().size() - 1);
+            if (clean.contains("TOTALRATE-")) {
+                String rate = clean.split("TOTALRATE-")[1].split("/")[0].trim();
+                if (lastH.getTotalAmount() == null || lastH.getTotalAmount().isEmpty()) {
+                    lastH.setTotalAmount(rate);
+                    lastH.setTtlAmount(rate);
+                }
+            }
+            if (clean.contains("MONEYTYPE-")) {
+                String curr = clean.split("MONEYTYPE-")[1].split("/")[0].trim();
+                if (lastH.getCurrency() == null) lastH.setCurrency(curr);
+            }
+            if (clean.contains("HOTELNAM-") && (lastH.getHotelName() == null || lastH.getHotelName().isEmpty())) {
+                lastH.setHotelName(clean.split("HOTELNAM-")[1].split("/")[0].trim());
             }
         }
 
-        // 4. Códigos de razón (QCRC)
-        if (raw.startsWith("QCRC-")) {
-            addAhorro(data, raw, 0.0);
+        // 3. Tabla de Ahorros / Auditoría
+        if (clean.startsWith("DP=") || clean.startsWith("CC=") || clean.startsWith("EN=")) {
+            String label = clean.startsWith("DP") ? "S*BREAK1-" : clean.startsWith("CC") ? "S*BREAK2-" : "S*BREAK3-";
+            addAhorro(data, label + clean.split("=")[1].split(";")[0], 0.0);
         }
-
-        // Remarks Estructurados
-        if (raw.startsWith("APPFCM/")) {
-            data.getStructuredRemarks().add(new TranslatedInfo("APPFCM_DATA", "RM", raw, ""));
-            detail.put("fcmMetadata", raw);
-        } else {
-            detail.put("info", raw);
+        if (clean.startsWith("QCHF/") || clean.startsWith("QCMK/") || clean.startsWith("QCLF/")) {
+            String[] parts = clean.split("/");
+            if (parts.length > 1) addAhorro(data, parts[0], Double.parseDouble(parts[1].replaceAll("[^0-9.]", "")));
         }
-
+        if (clean.startsWith("TRE=") || clean.startsWith("CC2=") || clean.startsWith("SSA=")) {
+            String key = clean.startsWith("TRE") ? "1-" : clean.startsWith("CC2") ? "2-" : "3-";
+            addAhorro(data, "FCM UDID " + key + clean.split("=")[1].trim(), 0.0);
+        }
         data.getRemarks().add(raw);
-        data.getDetailRemarks().add(detail);
+    }
+
+    private void processOSI(String line, AirFileData data) {
+        String raw = line.substring(4).trim();
+        // Capturar Contacto de Emergencia
+        if (data.getPassenger() != null && (raw.contains("EMERGENCIAS") || raw.contains("CTC"))) {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\d{7,15}");
+            java.util.regex.Matcher m = p.matcher(raw);
+            if (m.find()) {
+                data.getPassenger().setEmergencyContactPhone(m.group());
+                data.getPassenger().setEmergencyContactName("AC TOURS EMERGENCIAS");
+            }
+        }
+        data.getOsi().add(raw);
     }
 
     private void addAhorro(AirFileData data, String desc, Double monto) {
@@ -297,15 +427,40 @@ public class AirParserService {
 
     private void processSSR(String line, AirFileData data, Map<String, Passenger> pMap) {
         String raw = line.substring(4).trim();
-        if (raw.contains("DOCS") && pMap.containsKey("P1")) {
-            String[] docs = raw.split("/");
-            if (docs.length >= 7) {
-                Passenger p = pMap.get("P1");
-                p.setBirthDate(normalizeBirthDate(docs[5]));
-                p.setGender(docs[6].equals("M") ? "MASCULINO" : "FEMENINO");
-                if (data.getGender() == null) data.setGender(docs[6]);
+        Passenger p = data.getPassenger();
+        if (p == null) return;
+
+        // 1. SSR DOCS: Fecha Nacimiento y Género
+        if (raw.contains("DOCS")) {
+            // Formato: SSR DOCS LA HK1/////30AUG65/M//SOTO/FRANZ/ABEL
+            String[] docsParts = raw.split("/");
+            for (String part : docsParts) {
+                // Buscar Fecha de Nacimiento (DDMMMYY)
+                if (part.matches("\\d{2}[A-Z]{3}\\d{2}")) {
+                    p.setBirthDate(normalizeBirthDate(part));
+                }
+                // Buscar Género (M o F)
+                if (part.equals("M") || part.equals("F")) {
+                    p.setGender(part);
+                    data.setGender(part);
+                }
             }
         }
+
+        // 2. SSR CTCE: Email
+        if (raw.contains("CTCE")) {
+            // Formato: SSR CTCE LA HK1/FRANZ.SOTO//NEWMONT.COM
+            String email = raw.substring(raw.indexOf("/") + 1).replace("//", "@").split(";")[0].split("\\s+")[0];
+            p.setEmail(email);
+        }
+
+        // 3. SSR CTCM: Teléfono
+        if (raw.contains("CTCM")) {
+            // Formato: SSR CTCM LA HK1/51976222568
+            String phone = raw.substring(raw.indexOf("/") + 1).split(";")[0].split("\\s+")[0];
+            p.setPhone(phone);
+        }
+
         data.getStructuredSSR().add(new TranslatedInfo("SISTEMA_SSR_RAW", "SSR", raw, "bi-info-square"));
     }
 
@@ -397,11 +552,39 @@ public class AirParserService {
 
 
     private void parseHeaderMUC(String line, AirFileData data) {
-        String[] parts = line.split(";");
-        if (parts.length > 2) data.getStockBoleto().setCo_seudo(parts[2].trim());
-        Matcher m = Pattern.compile("MUC1A\\s+([A-Z0-9]{6})").matcher(line);
-        if (m.find()) data.getStockBoleto().setNu_pnr(m.group(1));
+        try {
+            String[] parts = line.split(";");
+            // El PNR (6 caracteres después de MUC1A + espacio)
+            if (line.startsWith("MUC1A")) {
+                String pnr = line.substring(6, 12).trim();
+                data.setPnr(pnr);
+                data.getStockBoleto().setNu_pnr(pnr);
+            }
+
+            if (parts.length > 2) {
+                // El Office ID (Pseudo) suele ser la tercera parte
+                String officeId = parts[2].trim();
+                data.setOfficeId(officeId);
+                data.getStockBoleto().setCo_seudo(officeId);
+
+                // CAPTURA DE IATA (El número de 8 dígitos que sigue al Office ID)
+                if (parts.length > 3 && parts[3].trim().matches("\\d{8}")) {
+                    data.setIataNumber(parts[3].trim());
+                }
+            }
+
+            // CAPTURA DE VALIDATING CARRIER (Al final de la línea MUC1A)
+            // Ejemplo: ...;LA KZMHKR
+            String lastPart = parts[parts.length - 1].trim();
+            if (lastPart.length() >= 2) {
+                String carrier = lastPart.substring(0, 2);
+                if (carrier.matches("[A-Z0-9]{2}")) {
+                    data.setValidatingCarrier(carrier);
+                }
+            }
+        } catch (Exception e) {}
     }
+
     private void parseLineC(String line, AirFileData data) {
         if (line.length() >= 15) {
             String si = line.substring(12, 14);
@@ -429,27 +612,85 @@ public class AirParserService {
     }
 
     private void parseTicketResilient(String line, AirFileData data) {
-        String tk = line.split(";")[0].replaceAll("[^0-9]", "");
-        if (tk.length() > 10) tk = tk.substring(tk.length() - 10);
-        data.setTicketNumber(tk);
-        data.getStockBoleto().setDe_boleto(tk);
-    }
-    private void parseFare(String line, FareInfo fare, AirFileData data) {
-        String[] parts = line.split(";");
-        String totalStr = parts[parts.length - 1].trim();
-        String num = totalStr.replaceAll("[^0-9.]", "");
-        if (!num.isEmpty()) {
-            Double mo = Double.parseDouble(num);
-            fare.setTotalFare(mo);
-            String curr = totalStr.replaceAll("[0-9.]", "").trim();
-            fare.setCurrency(curr.length() > 2 ? curr.substring(0, 2) : curr);
-            data.getStockBoleto().setMo_monto(mo);
-            data.getStockBoleto().setCo_moneda_boleto(fare.getCurrency());
+        // Buscamos un patrón de 10 o 13 dígitos (algunos traen el código de aerolínea)
+        Pattern pattern = Pattern.compile("(\\d{10,13})");
+        Matcher matcher = pattern.matcher(line);
+
+        if (matcher.find()) {
+            String tk = matcher.group(1);
+            // Si tiene 13 dígitos, los últimos 10 suelen ser el número correlativo
+            String tkShort = tk.length() > 10 ? tk.substring(tk.length() - 10) : tk;
+
+            data.setTicketNumber(tk); // Guardamos el completo
+            data.getStockBoleto().setDe_boleto(tkShort);
         }
     }
-    private void parseTaxes(String line, FareInfo fare) {
-        for (String t : line.substring(4).split(";")) if (!t.trim().isEmpty()) fare.getTaxes().add(t.trim());
+
+    private void parseFare(String line, FareInfo fare, AirFileData data) {
+        try {
+            // En Amadeus: K-F[BASE] ;;; [TOTAL]
+            // Ejemplo: K-FUSD346.00 ;;; USD504.59
+            String[] parts = line.split(";");
+
+            // 1. Extraer Tarifa Base (Primera parte)
+            String basePart = parts[0].replace("K-F", "").trim();
+            String baseNum = basePart.replaceAll("[^0-9.]", "");
+            if (!baseNum.isEmpty()) {
+                fare.setBaseFare(Double.parseDouble(baseNum));
+            }
+
+            // 2. Extraer Tarifa Total (Última parte no vacía)
+            String totalPart = parts[parts.length - 1].trim();
+            String totalNum = totalPart.replaceAll("[^0-9.]", "");
+            String currency = totalPart.replaceAll("[0-9.]", "").trim();
+
+            if (!totalNum.isEmpty()) {
+                Double totalVal = Double.parseDouble(totalNum);
+                fare.setTotalFare(totalVal);
+                fare.setCurrency(currency);
+
+                // Actualizar StockBoleto
+                data.getStockBoleto().setMo_monto(totalVal);
+                data.getStockBoleto().setCo_moneda_boleto(currency);
+            }
+        } catch (Exception e) {
+            System.err.println("Error en parseFare: " + e.getMessage());
+        }
     }
+
+    private void parseTaxes(String line, FareInfo fare) {
+        // 1. Procesar desgloses detallados (Líneas KFTF, KNTF, KSTF)
+        if (line.startsWith("KFTF") || line.startsWith("KNTF") || line.startsWith("KSTF")) {
+            String[] components = line.substring(5).split(";");
+            for (String comp : components) {
+                String val = comp.trim();
+                if (!val.isEmpty()) {
+                    // Limpiamos espacios múltiples: "USD22.10    YR VB" -> "USD22.10 YR"
+                    String cleanedTax = val.replaceAll("\\s{2,}", " ");
+                    // Si la tasa tiene un código de 2 letras al final (ej: YR, HW, PE)
+                    if (!fare.getTaxes().contains(cleanedTax)) {
+                        fare.getTaxes().add(cleanedTax);
+                    }
+                }
+            }
+        }
+        // 2. Procesar línea de resumen TAX-
+        else if (line.startsWith("TAX-")) {
+            String[] tParts = line.substring(4).split(";");
+            for (String t : tParts) {
+                String val = t.trim();
+                if (!val.isEmpty()) {
+                    // Si es XT, lo agregamos siempre. Si es otro, solo si no está en el desglose KFTF
+                    if (val.contains("XT")) {
+                        if (!fare.getTaxes().contains(val)) fare.getTaxes().add(val);
+                    } else {
+                        if (!fare.getTaxes().contains(val)) fare.getTaxes().add(val);
+                    }
+                }
+            }
+        }
+    }
+
     private void parseFormOfPayment(String line, AirFileData data) {
         String fp = line.substring(2).split(";")[0].trim();
         data.setFormOfPayment(fp);
